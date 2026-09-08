@@ -1,4 +1,4 @@
 opencv-python-headless
-fitz
+pymupdf
 c2pa-python
 
