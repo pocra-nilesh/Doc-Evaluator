@@ -1,3 +1,4 @@
 opencv-python-headless
-pdf2image
+fitz
 c2pa-python
+
