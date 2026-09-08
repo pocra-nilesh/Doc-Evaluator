@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 import streamlit as st
 
-from pdf2image import convert_from_path
+import fitz  # PyMuPDF
 import c2pa
 
 
@@ -502,44 +502,63 @@ class DocumentValidator:
 
         if file_path.lower().endswith(".pdf"):
 
-            poppler_sys_path = (
-                r"C:\Program Files\poppler"
-                r"\poppler-26.02.0"
-                r"\Library\bin"
-            )
+            # PyMuPDF renders PDFs directly and does not require
+            # Poppler or any system-level PDF renderer.
+            # This makes the app suitable for Streamlit Cloud.
+            pdf = fitz.open(file_path)
 
-            rendered_pages = convert_from_path(
-                file_path,
-                dpi=200,
-                poppler_path=poppler_sys_path
-            )
+            try:
+                if pdf.page_count == 0:
+                    raise ValueError(
+                        "PDF appears to be empty or corrupted."
+                    )
 
-            if not rendered_pages:
+                # Equivalent to approximately 200 DPI:
+                # 72 points/inch is the PDF coordinate system.
+                zoom = 200 / 72
+                matrix = fitz.Matrix(zoom, zoom)
 
-                raise ValueError(
-                    "PDF appears to be empty or corrupted."
-                )
+                for page_number, pdf_page in enumerate(
+                    pdf,
+                    start=1
+                ):
 
-            for page_number, page in enumerate(
-                rendered_pages,
-                start=1
-            ):
+                    pix = pdf_page.get_pixmap(
+                        matrix=matrix,
+                        colorspace=fitz.csRGB,
+                        alpha=False
+                    )
 
-                color_img = cv2.cvtColor(
-                    np.array(page),
-                    cv2.COLOR_RGB2BGR
-                )
+                    # PyMuPDF returns RGB bytes.
+                    # Convert them to a NumPy RGB array first,
+                    # then to OpenCV's BGR format.
+                    rgb_img = np.frombuffer(
+                        pix.samples,
+                        dtype=np.uint8
+                    ).reshape(
+                        pix.height,
+                        pix.width,
+                        pix.n
+                    )
 
-                gray_img = cv2.cvtColor(
-                    color_img,
-                    cv2.COLOR_BGR2GRAY
-                )
+                    color_img = cv2.cvtColor(
+                        rgb_img,
+                        cv2.COLOR_RGB2BGR
+                    )
 
-                pages.append({
-                    "page_number": page_number,
-                    "color": color_img,
-                    "gray": gray_img
-                })
+                    gray_img = cv2.cvtColor(
+                        color_img,
+                        cv2.COLOR_BGR2GRAY
+                    )
+
+                    pages.append({
+                        "page_number": page_number,
+                        "color": color_img,
+                        "gray": gray_img
+                    })
+
+            finally:
+                pdf.close()
 
         # --------------------------------------------------------
         # Image
